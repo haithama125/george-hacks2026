@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 
 import type { DashboardData, DailyMetric, Meal, Micronutrient } from "./mock-data";
 
@@ -15,6 +16,11 @@ const statusToneMap: Record<Micronutrient["status"], string> = {
 };
 
 const quickActions = ["Upload Picture of meal", "View Plan", "Export Report"];
+const primaryMicronutrientLabels = new Set(["Vitamin D", "Vitamin B12", "Folate", "Vitamin C", "Vitamin A"]);
+const smoothExpandTransition = {
+  duration: 0.36,
+  ease: [0.22, 1, 0.36, 1] as const,
+};
 
 function formatValue(value: number, unit: string) {
   return `${value}${unit}`;
@@ -39,7 +45,6 @@ function CaloriesCard({ metric }: { metric: DailyMetric }) {
     <article className="rounded-[1.9rem] border border-white/80 bg-white/95 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.08)]">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Calories</p>
       <p className="mt-4 text-5xl font-semibold leading-none text-zinc-950">{metric.consumed}</p>
-      <p className="mt-3 text-sm text-zinc-500">of {metric.target}{metric.unit} target</p>
       <div className="mt-4 h-2.5 rounded-full bg-zinc-100">
         <div className="h-2.5 rounded-full bg-rose-300" style={{ width: `${getClampedPercent(metric.consumed, metric.target)}%` }} />
       </div>
@@ -99,14 +104,10 @@ function MacroWaterCard({ macros, water }: { macros: DailyMetric[]; water: Daily
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Macronutrients</p>
-          <h2 className="mt-2 text-lg font-semibold text-zinc-950">Protein, carbs, fats, water</h2>
         </div>
-        <span className="rounded-full bg-cyan-50 px-3 py-1 text-[11px] font-semibold text-cyan-700">
-          Water {getPercent(water.consumed, water.target)}%
-        </span>
       </div>
 
-      <div className="mt-5 grid grid-cols-4 gap-3">
+      <div className="mt-5 grid grid-cols-4 justify-items-center gap-4">
         {macros.map((metric) => (
           <MiniRing key={metric.label} metric={metric} />
         ))}
@@ -139,11 +140,8 @@ function MicronutrientRow({ nutrient }: { nutrient: Micronutrient }) {
 function MicronutrientsCard({ micronutrients }: { micronutrients: Micronutrient[] }) {
   const [expanded, setExpanded] = useState(false);
 
-  const primaryNutrients = micronutrients.filter((nutrient) =>
-    ["Vitamin D", "Vitamin B12", "Folate", "Vitamin C", "Vitamin A"].includes(nutrient.label),
-  );
-
-  const nutrientsToShow = expanded ? micronutrients : primaryNutrients;
+  const primaryNutrients = micronutrients.filter((nutrient) => primaryMicronutrientLabels.has(nutrient.label));
+  const additionalNutrients = micronutrients.filter((nutrient) => !primaryMicronutrientLabels.has(nutrient.label));
 
   return (
     <article className="rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.08)]">
@@ -155,23 +153,46 @@ function MicronutrientsCard({ micronutrients }: { micronutrients: Micronutrient[
       >
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Micronutrients</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">Primary vitamins and mineral gaps</h2>
-          <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
-            {expanded
-              ? "Full nutrient list unlocked for deeper review."
-              : "Showing the five primary vitamins first. Tap to expand the complete micronutrient list."}
-          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">Vitamins and minerals</h2>
         </div>
         <span className="shrink-0 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
           {expanded ? "Show less" : "Show all"}
         </span>
       </button>
 
-      <div className="mt-6 space-y-4">
-        {nutrientsToShow.map((nutrient) => (
+      <div className="mt-6 grid gap-4">
+        {primaryNutrients.map((nutrient) => (
           <MicronutrientRow key={nutrient.label} nutrient={nutrient} />
         ))}
       </div>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            key="additional-micronutrients"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{
+              height: smoothExpandTransition,
+              opacity: { duration: 0.18, ease: "easeOut" },
+            }}
+            className="overflow-hidden"
+          >
+            <motion.div
+              initial={{ y: -8 }}
+              animate={{ y: 0 }}
+              exit={{ y: -8 }}
+              transition={smoothExpandTransition}
+              className="mt-4 grid gap-4"
+            >
+              {additionalNutrients.map((nutrient) => (
+                <MicronutrientRow key={nutrient.label} nutrient={nutrient} />
+              ))}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </article>
   );
 }
@@ -195,9 +216,6 @@ function MealCard({ meal }: { meal: Meal }) {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">{meal.time}</p>
                 <h3 className="mt-1 truncate text-[1.6rem] font-semibold leading-tight text-zinc-950">{meal.name}</h3>
               </div>
-              <span className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-semibold text-zinc-600">
-                {expanded ? "Hide" : "Micros"}
-              </span>
             </div>
 
             <p className="mt-2 text-sm font-semibold text-zinc-900">{meal.calories} Calories</p>
@@ -230,9 +248,60 @@ function MealCard({ meal }: { meal: Meal }) {
 
 export function DashboardView({ data }: DashboardViewProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [activeScrollArea, setActiveScrollArea] = useState<"left" | "right" | "meals" | null>(null);
+  const leftSidebarRef = useRef<HTMLElement | null>(null);
+  const rightColumnRef = useRef<HTMLElement | null>(null);
+  const mealsListRef = useRef<HTMLDivElement | null>(null);
 
   const calories = data.dailySummary.find((metric) => metric.label === "Calories");
   const water = data.supportMetrics.find((metric) => metric.label === "Water");
+
+  useEffect(() => {
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    const registerScrollFade = (key: "left" | "right" | "meals", node: HTMLElement | null) => {
+      if (!node) {
+        return () => undefined;
+      }
+
+      const handleScroll = () => {
+        setActiveScrollArea(key);
+
+        const existingTimer = timers.get(key);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+
+        const nextTimer = setTimeout(() => {
+          setActiveScrollArea((current) => (current === key ? null : current));
+          timers.delete(key);
+        }, 900);
+
+        timers.set(key, nextTimer);
+      };
+
+      node.addEventListener("scroll", handleScroll, { passive: true });
+
+      return () => {
+        node.removeEventListener("scroll", handleScroll);
+        const existingTimer = timers.get(key);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          timers.delete(key);
+        }
+      };
+    };
+
+    const cleanups = [
+      registerScrollFade("left", leftSidebarRef.current),
+      registerScrollFade("right", rightColumnRef.current),
+      registerScrollFade("meals", mealsListRef.current),
+    ];
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, []);
 
   if (!calories || !water) {
     return null;
@@ -240,9 +309,12 @@ export function DashboardView({ data }: DashboardViewProps) {
 
   return (
     <main className="min-h-screen bg-[#e8e6e1] px-4 py-4 sm:px-6 lg:h-screen lg:overflow-hidden lg:px-8 lg:py-6">
-      <div className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-5 lg:grid lg:grid-cols-[420px_minmax(0,1fr)] lg:gap-6">
-        <section className="flex flex-col gap-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-hidden">
-          <div className="grid gap-4 sm:grid-cols-[0.95fr_1.05fr]">
+      <div className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-5 lg:grid lg:grid-cols-[520px_minmax(0,1fr)] lg:gap-6">
+        <section
+          ref={leftSidebarRef}
+          className={`scrollbar-fade flex flex-col gap-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:pr-2 ${activeScrollArea === "left" ? "scrollbar-fade-active" : ""}`}
+        >
+          <div className="grid gap-4 sm:grid-cols-[0.8fr_1.2fr]">
             <CaloriesCard metric={calories} />
             <MacroWaterCard macros={data.macroRings} water={water} />
           </div>
@@ -250,7 +322,10 @@ export function DashboardView({ data }: DashboardViewProps) {
           <MicronutrientsCard micronutrients={data.micronutrients} />
         </section>
 
-        <section className="flex min-h-0 flex-col lg:h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pr-2">
+        <section
+          ref={rightColumnRef}
+          className={`scrollbar-fade flex min-h-0 flex-col lg:h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pr-2 ${activeScrollArea === "right" ? "scrollbar-fade-active" : ""}`}
+        >
           <section className="flex min-h-0 flex-1 flex-col rounded-[2rem] border border-white/80 bg-white/95 p-5 shadow-[0_14px_40px_rgba(15,23,42,0.08)] lg:min-h-[720px]">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -262,7 +337,10 @@ export function DashboardView({ data }: DashboardViewProps) {
               </p>
             </div>
 
-            <div className="mt-5 flex-1 overflow-y-auto pr-1">
+            <div
+              ref={mealsListRef}
+              className={`scrollbar-fade mt-5 flex-1 overflow-y-auto pr-1 ${activeScrollArea === "meals" ? "scrollbar-fade-active" : ""}`}
+            >
               <div className="space-y-4 pb-2">
                 {data.meals.map((meal) => (
                   <MealCard key={meal.id} meal={meal} />
