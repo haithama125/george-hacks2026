@@ -4,7 +4,7 @@ import { getDatabase } from "@/lib/mongodb";
 
 export const runtime = "nodejs";
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 type ParsedLab = {
   key: string;
@@ -163,19 +163,36 @@ export async function POST(
 
     if (!geminiResponse.ok) {
       const failureText = await geminiResponse.text();
+      let failureMessage = "Gemini parsing request failed.";
+
+      try {
+        const parsedFailure = JSON.parse(failureText) as {
+          error?: {
+            message?: string;
+          };
+        };
+
+        if (parsedFailure.error?.message) {
+          failureMessage = parsedFailure.error.message;
+        }
+      } catch {
+        if (failureText) {
+          failureMessage = failureText;
+        }
+      }
 
       await collection.updateOne(
         { _id },
         {
           $set: {
             status: "failed",
-            errorMessage: failureText || "Gemini parsing request failed.",
+            errorMessage: failureMessage,
             updatedAt: new Date(),
           },
         },
       );
 
-      return Response.json({ error: "Gemini parsing request failed." }, { status: 502 });
+      return Response.json({ error: failureMessage }, { status: 502 });
     }
 
     const geminiPayload = (await geminiResponse.json()) as {
